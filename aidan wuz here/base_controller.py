@@ -23,6 +23,14 @@ FORWARD_SPEED = 6.28 # Max = 6.28
 left_motor.setVelocity(FORWARD_SPEED)
 right_motor.setVelocity(FORWARD_SPEED)
 
+# Distance Sensors n shi
+distance_sensors = []
+
+for i in range(8):
+    sensor = robot.getDevice(f'ps{i}')
+    sensor.enable(timestep)
+    distance_sensors.append(sensor)
+
 # -----------------------------
 # Camera
 # -----------------------------
@@ -32,7 +40,6 @@ camera_width = camera.getWidth()
 cam_middle = camera_width//2
 
 green_pixels = []
-probably_green = False
 
 camera_upd = 0
 updates = 1
