@@ -9,8 +9,8 @@ from controller import Robot, DistanceSensor, Motor, Camera, Gyro, Accelerometer
 from typing import Literal
 from math import pi, pow, isnan, sin, cos
 
-AIM_MARGIN = 2
-CORRECT_MARGIN = 3
+AIM_MARGIN = 3
+CORRECT_MARGIN = 4
 
 CAREFUL_BONUS = 5
 
@@ -107,7 +107,10 @@ def main():
             sawLeft |= analysis.seesLeft
             sawRight |= analysis.seesRight
 
-        if analysis.distance < 0.1 and not hasBeenPassthru:
+        if analysis.distance < 0 and not hasBeenPassthru:
+            passthru = 8 if not beCareful else 12
+            
+        if analysis.distance < 0.1 and analysis.distance > 0:
             passthru = 8 if not beCareful else 12
 
         turn = 0.0
@@ -115,15 +118,16 @@ def main():
         if passthru > 0 or analysis.margin > CORRECT_MARGIN + (CAREFUL_BONUS if beCareful else 0):
             turn = gyroWrapper.getZ() / 90 if passthru == 0 else (8 - passthru) * gyroWrapper.getZ() / 90 / 8
         elif isnan(analysis.greenTarget):
-            turn = 2 if sawLeft else -2 if sawRight else gyroWrapper.getZ() / 90
+            turn = 0.75 if sawLeft else -0.75
         else:
-            turn = -analysis.greenTarget
+            turn = -analysis.greenTarget * 1.3
             hasBeenPassthru = False
 
         print(f"Target: {analysis.greenTarget}")
         print(f"Turn: {turn}")
         print(f"Dist: {analysis.distance * cos(gyroWrapper.getZ() * GyroWrapper.DEGREES_TO_RADS)}")
         print(f"Margin: {analysis.margin}")
+        print(f"L/R: {analysis.seesLeft}/{analysis.seesRight}")
         print(f"sL/sR: {sawLeft}/{sawRight}")
         
         if turn < 0:
@@ -145,10 +149,10 @@ def main():
                 sawRight = False
                 print(f"Pass took {currentSteps - lastPass}")
                 lastPass = currentSteps
-                beCareful = analysis.distance < 1.5
+                beCareful = analysis.distance < 1.5 and analysis.distance > 0
                 if beCareful:
                     print("CAREFUL CAREFUL CAREFUL")
-                    print(sawLeft)
+                print(sawLeft)
         currentSteps += 1
 
 def estimateDistance(frontLeftSensor: DistanceSensor, frontRightSensor: DistanceSensor, rotation: float) -> float:
@@ -240,7 +244,7 @@ def analyzeCam(camera: Camera, careful: bool = False) -> CameraAnalysis:
             g = camera.imageGetGreen(image, camera.getWidth(), x, y)
             b = camera.imageGetBlue(image, camera.getWidth(), x, y)
 
-            if r >= 150 and g >= 150 and b >= 150:
+            if r >= 180 and g >= 180 and b >= 180:
                 if y < whiteLow:
                     whiteLow = y
                 if y > whiteHigh:
