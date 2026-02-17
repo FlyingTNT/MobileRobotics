@@ -5,9 +5,14 @@ Basic e-puck controller:
 - Enables distance sensors
 """
 
-from controller import Robot, DistanceSensor, Motor, Camera, Gyro, Accelerometer
+from controller import Robot, DistanceSensor, Motor, Camera, Gyro, Accelerometer, PositionSensor
 from typing import Literal
-from math import pi
+from math import pi, pow, isnan, sin, cos
+
+AIM_MARGIN = 2
+CORRECT_MARGIN = 3
+
+CAREFUL_BONUS = 5
 
 def main():
 
@@ -18,20 +23,6 @@ def main():
 
     # Get the basic time step of the current world
     timestep = int(robot.getBasicTimeStep())
-
-    distanceSensors: list[DistanceSensor] = []
-
-    # -----------------------------
-    # Motors (Differential Drive)
-    # -----------------------------
-    for i in range(8):
-        sensor = robot.getDevice(f"ps{i}")
-
-        if not isinstance(sensor, DistanceSensor):
-            return
-
-        distanceSensors.append(sensor)
-        sensor.enable(timestep)
 
     leftMotor = robot.getDevice('left wheel motor')
     rightMotor = robot.getDevice('right wheel motor')
@@ -44,7 +35,7 @@ def main():
     rightMotor.setPosition(float('inf'))
 
     # Set a constant forward speed
-    FORWARD_SPEED = 6.28 # Max = 6.28
+    FORWARD_SPEED = 6.28
     leftMotor.setVelocity(FORWARD_SPEED)
     rightMotor.setVelocity(FORWARD_SPEED)
 
@@ -55,6 +46,8 @@ def main():
 
     if not isinstance(camera, Camera):
         return
+
+    camera.setFov(1.5)
 
     camera.enable(timestep)
 
@@ -86,45 +79,273 @@ def main():
     print(f"Gyro Lookup: {gyro.getLookupTable()}")
     print(f"Accel Lookup: {accelerometer.getLookupTable()}")
 
-    save = True
+    passthru = 0
+    hasBeenPassthru = False
+
+    lastPass = 0
+    currentSteps = 0
+
+    beCareful = False
+
+    sawLeft = False
+    sawRight = False
 
     # -----------------------------
     # Main Control Loop
     # -----------------------------
     while robot.step(timestep) != -1:
-        """
-        This loop runs once every timestep.
-        The robot currently:
-        - Keeps moving forward
-        - Reads sensors (but doesn't react yet)
-        """
-
-        if save:
-            save = False
-            camera.saveImage("camera.png", 100)
-
-        # Read distance sensor values
-        ps_values = [sensor.getValue() for sensor in distanceSensors]
-
         gyroWrapper.step(timestep)
         accelWrapper.step(timestep)
 
-        print(gyro.getValues())
+        #print(f"X: {gyroWrapper.getX()}")
+        #print(f"Y: {gyroWrapper.getY()}")
+        #print(f"Z: {gyroWrapper.getZ()}")
 
-        print(f"X: {gyroWrapper.getX()}")
-        print(f"Y: {gyroWrapper.getY()}")
-        print(f"Z: {gyroWrapper.getZ()}")
+        analysis = analyzeCam(camera, beCareful)
 
-        print("Accel")
-        print(f"X: {accelWrapper.getX()}")
-        print(f"Y: {accelWrapper.getY()}")
-        print(f"Z: {accelWrapper.getZ()}")
+        if passthru == 0:
+            sawLeft |= analysis.seesLeft
+            sawRight |= analysis.seesRight
 
-        # Example debug output (optional)
-        # print(ps_values)
+        if analysis.distance < 0.1 and not hasBeenPassthru:
+            passthru = 8 if not beCareful else 12
 
-        # Motors already set → robot keeps moving forward
-        pass
+        turn = 0.0
+
+        if passthru > 0 or analysis.margin > CORRECT_MARGIN + (CAREFUL_BONUS if beCareful else 0):
+            turn = gyroWrapper.getZ() / 90 if passthru == 0 else (8 - passthru) * gyroWrapper.getZ() / 90 / 8
+        elif isnan(analysis.greenTarget):
+            turn = 2 if sawLeft else -2 if sawRight else gyroWrapper.getZ() / 90
+        else:
+            turn = -analysis.greenTarget
+            hasBeenPassthru = False
+
+        print(f"Target: {analysis.greenTarget}")
+        print(f"Turn: {turn}")
+        print(f"Dist: {analysis.distance * cos(gyroWrapper.getZ() * GyroWrapper.DEGREES_TO_RADS)}")
+        print(f"Margin: {analysis.margin}")
+        print(f"sL/sR: {sawLeft}/{sawRight}")
+        
+        if turn < 0:
+            rightMotor.setVelocity(FORWARD_SPEED)
+            leftMotor.setVelocity(FORWARD_SPEED * (1 + turn))
+        elif turn > 0:
+            rightMotor.setVelocity(FORWARD_SPEED * (1 - turn))
+            leftMotor.setVelocity(FORWARD_SPEED)
+        else:
+            rightMotor.setVelocity(FORWARD_SPEED)
+            leftMotor.setVelocity(FORWARD_SPEED)
+        
+        if passthru > 0:
+            passthru -= 1
+            hasBeenPassthru = True
+
+            if passthru == 0:
+                sawLeft = False
+                sawRight = False
+                print(f"Pass took {currentSteps - lastPass}")
+                lastPass = currentSteps
+                beCareful = analysis.distance < 1.5
+                if beCareful:
+                    print("CAREFUL CAREFUL CAREFUL")
+                    print(sawLeft)
+        currentSteps += 1
+
+def estimateDistance(frontLeftSensor: DistanceSensor, frontRightSensor: DistanceSensor, rotation: float) -> float:
+    l = frontLeftSensor.getValue()
+    r = frontRightSensor.getValue()
+
+    print(f"{r} -> {reverseLookup(frontRightSensor)}")
+
+    lBad = l < 0
+    rBad = r < 0
+
+    if lBad and rBad:
+        return -1
+    
+    l *= sin(1.87 + rotation)
+    r *= sin(1.27 + rotation)
+
+    return l if rBad else r if lBad else (l + r) / 2 
+
+def reverseLookup(sensor: DistanceSensor) -> float:
+    table = sensor.getLookupTable()
+
+    value = sensor.getValue()
+
+    if len(table) < 6:
+        return value
+    
+    lastRow = table[0:3]
+
+    for i in range(3, len(table), 3):
+        thisRow = table[i:i+3]
+
+        if value > max(lastRow[1], thisRow[1]):
+            lastRow = thisRow
+            continue
+
+        if value < min(lastRow[1], thisRow[1]):
+            lastRow = thisRow
+            continue
+
+        slope = (lastRow[0] - thisRow[0]) / (lastRow[1] - thisRow[1])
+
+        intercept = lastRow[0] - lastRow[1] * slope
+
+        return slope * value + intercept
+    
+    return -1
+
+
+class CameraAnalysis:
+    def __init__(self):
+        self.seesLeft = False
+        self.seesRight = False
+        self.greenTarget = 0.0
+        self.greenCenter = 0.0
+        self.margin = 0
+        self.distance = 0.0
+
+def analyzeCam(camera: Camera, careful: bool = False) -> CameraAnalysis:
+    R = 0
+    G = 1
+    B = 2
+
+    image = camera.getImage()
+
+    redLow = 1000
+    redHigh = 0
+    redLeft = 1000
+    redRight = 0
+
+    greenLow = 1000
+    greenHigh = 0
+    greenLeft = 1000
+    greenRight = 0
+
+    whiteLow = 1000
+    whiteHigh = 0
+    whiteLeft = 1000
+    whiteRight = 0
+
+    rwhiteLow = 1000
+    rwhiteHigh = 0
+    rwhiteLeft = 1000
+    rwhiteRight = 0
+
+    for x in range(0, camera.getWidth()):
+        for y in range(0, camera.getHeight()):
+            r = camera.imageGetRed(image, camera.getWidth(), x, y)
+            g = camera.imageGetGreen(image, camera.getWidth(), x, y)
+            b = camera.imageGetBlue(image, camera.getWidth(), x, y)
+
+            if r >= 150 and g >= 150 and b >= 150:
+                if y < whiteLow:
+                    whiteLow = y
+                if y > whiteHigh:
+                    whiteHigh = y
+                if x < whiteLeft:
+                    whiteLeft = x
+                if x > whiteRight:
+                    whiteRight = x
+                continue
+
+            if 70 < r and r < 75 and 75 < g and g < 82 and 95 < b and b < 104:
+                if y < rwhiteLow:
+                    rwhiteLow = y
+                if y > rwhiteHigh:
+                    rwhiteHigh = y
+                if x < rwhiteLeft:
+                    rwhiteLeft = x
+                if x > rwhiteRight:
+                    rwhiteRight = x
+                continue
+
+            if b > 50:
+                continue
+
+            #print(f"{x}, {y}: {r}, {g}, {b}")
+
+            if r >= 150:
+                if y < redLow:
+                    redLow = y
+                if y > redHigh:
+                    redHigh = y
+                if x < redLeft:
+                    redLeft = x
+                if x > redRight:
+                    redRight = x
+                continue
+
+            if g >= 150:
+                if y < greenLow:
+                    greenLow = y
+                if y > greenHigh:
+                    greenHigh = y
+                if x < greenLeft:
+                    greenLeft = x
+                    #print(f"{r}, {g}, {b}")
+                if x > greenRight:
+                    greenRight = x
+                continue
+    
+    out = CameraAnalysis()
+
+    print(whiteLeft)
+
+    out.seesLeft = whiteLeft == 0
+    out.seesRight = rwhiteRight == camera.getWidth() - 1
+
+    topTop = max(redHigh, greenHigh)
+    bottomBottom = min(redLow, greenLow)
+
+    height = topTop - bottomBottom
+
+    try:
+        out.distance = 8.5638 * pow(height, -1.143)  # Got these numbers thru Excel
+    except:
+        out.distance = -1
+
+    center = camera.getWidth() / 2
+
+    #print(center)
+    #print(greenLeft)
+    #print(greenRight)
+
+    out.greenCenter = greenLeft + (greenRight - greenLeft) / 2
+
+    margin = AIM_MARGIN if AIM_MARGIN >= 0 else 1
+    if careful:
+        margin += CAREFUL_BONUS
+
+    greenLeft += margin
+    greenRight -= margin
+
+    if greenLeft >= 999:
+        out.greenTarget = float("nan")
+        out.margin = -1000
+    elif AIM_MARGIN < 0:
+        out.greenTarget = (center - out.greenCenter) / camera.getWidth()
+        out.margin = min(center - greenLeft + margin, greenRight - center + margin)
+    elif greenLeft < center and center < greenRight:
+        out.greenTarget = 0
+        out.margin = min(center - greenLeft, greenRight - center) + margin
+    elif center <= greenLeft:
+        out.greenTarget = (center - greenLeft) / camera.getWidth()
+        out.margin = center - greenLeft + margin
+    elif center >= greenRight:
+        out.greenTarget = (center - greenRight) / camera.getWidth()
+        out.margin = greenRight - center + margin
+    else:
+        out.greenTarget = float("nan")
+        out.margin = -1000
+
+    out.greenCenter = greenLeft + (greenRight - greenLeft) / 2
+
+    return out
+
+
 
 class GyroWrapper:
     RADS_TO_DEGREES = 180 / pi
