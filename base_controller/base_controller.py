@@ -4,13 +4,14 @@ Basic e-puck controller:
 - Enables camera
 - Enables distance sensors
 """
-
+# 1:25:208 Normal Map
+# 1:30:912 Hard Map
 from controller import Robot, DistanceSensor, Motor, Camera, Gyro, Accelerometer, PositionSensor
 from typing import Literal
 from math import pi, pow, isnan, sin, cos
 
-AIM_MARGIN = 3
-CORRECT_MARGIN = 4
+AIM_MARGIN = 5
+CORRECT_MARGIN = 6
 
 CAREFUL_BONUS = 5
 
@@ -296,8 +297,6 @@ def analyzeCam(camera: Camera, careful: bool = False) -> CameraAnalysis:
     
     out = CameraAnalysis()
 
-    print(whiteLeft)
-
     out.seesLeft = whiteLeft == 0
     out.seesRight = rwhiteRight == camera.getWidth() - 1
 
@@ -305,10 +304,13 @@ def analyzeCam(camera: Camera, careful: bool = False) -> CameraAnalysis:
     bottomBottom = min(redLow, greenLow)
 
     height = topTop - bottomBottom
+    
+    print(f"H: {height}")
 
     try:
         out.distance = 8.5638 * pow(height, -1.143)  # Got these numbers thru Excel
     except:
+        print("fal")
         out.distance = -1
 
     center = camera.getWidth() / 2
@@ -322,6 +324,7 @@ def analyzeCam(camera: Camera, careful: bool = False) -> CameraAnalysis:
     margin = AIM_MARGIN if AIM_MARGIN >= 0 else 1
     if careful:
         margin += CAREFUL_BONUS
+       
 
     greenLeft += margin
     greenRight -= margin
