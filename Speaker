@@ -1,0 +1,17 @@
+from controller import Robot
+robot = Robot()
+timestep = int(robot.getBasicTimeStep())
+speaker = robot.getDevice("speaker")
+
+speaker.playSound(
+    speaker,
+    speaker,
+    "2011_honda_civic.wav",
+    1.0,
+    1.0,
+    0.0,
+    True
+)
+
+while robot.step(timestep) != -1:
+    pass
