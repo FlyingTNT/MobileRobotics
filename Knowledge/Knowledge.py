@@ -133,6 +133,9 @@ def main():
 
         print(f"{imu.getX():0.3f}, {imu.getY():0.3f} @ {imu.getRotation():0.0f}")
         print(f"{imu.getIntraTileX()}, {imu.getIntraTileY()} in tile {imu.getTileX()}, {imu.getTileY()}")
+        print(f"Tile Color: {imu.getTileColor()}")
+        print(f"Sees Start: {imu.facingStartWall()}")
+        print(f"Sees End: {imu.facingEndWall()}")
         print(f"Between: {imu.isBeteenTiles()}")
         print(f"Between F/B: {imu.isBetweenTilesForwardsBack()}")
         print(f"Between L/R: {imu.isBetweenTilesLeftRight()}")
@@ -146,7 +149,9 @@ def main():
         if bufferTurn >= 0:
             if bufferTurn == 0:
                 # Turn randomly
-                turnTarget += 90 if bool(getrandbits(1)) else -90
+                l = bool(getrandbits(1))
+                
+                turnTarget += 90 if l else -90
 
                 if turnTarget < -180:
                     turnTarget += 360
@@ -229,6 +234,9 @@ def reverseLookup(sensor: DistanceSensor) -> float:
 class IMU:
     WHITE_TILE_CUTOFF = 650
 
+    CAMERA_PIXEL_X = 22
+    CAMERA_PIXEL_Y = 17
+
     def __init__(self, leftMotor: Motor, rightMotor: Motor, camera: Camera, accelerometer: Accelerometer, gyro: Gyro, groundSensors: list[DistanceSensor], distanceSensors: list[DistanceSensor]):
         self.leftMotor = leftMotor
         self.rightMotor = rightMotor
@@ -243,6 +251,9 @@ class IMU:
         self.gyro.setMode("degrees")
 
         self.wallStatus = [False, False, False, False, False, False]
+
+        self.facingGreenWall = False
+        self.facingRedWall = False
         
         whiteVotes = 0
 
@@ -292,6 +303,33 @@ class IMU:
 
         self.y += distance * cos(angle)
         self.x += distance * sin(-angle)
+
+        self.facingRedWall = False
+        self.facingGreenWall = False
+
+        cameraImage = self.camera.getImageArray()
+        r, g, b = cameraImage[IMU.CAMERA_PIXEL_X][IMU.CAMERA_PIXEL_Y]
+
+        if r > 200 and g < 50 and b < 50:
+            redHeight = 0
+            for i in range(0, self.camera.getHeight()):
+                r, g, b = cameraImage[IMU.CAMERA_PIXEL_X][i]
+                if r > 200 and g < 50 and b < 50:
+                    redHeight += 1
+            
+            if redHeight >= 30:
+                self.facingRedWall = True
+    
+        if g > 200 and r < 50 and b < 50:
+            greenHeight = 0
+            for i in range(0, self.camera.getHeight()):
+                r, g, b = cameraImage[IMU.CAMERA_PIXEL_X][i]
+                if g > 200 and r < 50 and b < 50:
+                    greenHeight += 1
+            
+            if greenHeight >= 30:
+                self.facingGreenWall = True
+            
 
     def getRotation(self) -> float:
         return self.gyro.getZ()
@@ -391,6 +429,12 @@ class IMU:
     
     def getTileColor(self):
         return self.tileColor
+    
+    def facingStartWall(self):
+        return self.facingRedWall
+    
+    def facingEndWall(self):
+        return self.facingGreenWall
     
     def getMovementVector(self, seconds: float):
         WHEEL_DIAMETER = 2 * pi * 0.00205

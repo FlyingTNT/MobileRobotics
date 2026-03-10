@@ -496,23 +496,63 @@ def reverseLookup(sensor: DistanceSensor) -> float:
     
     return -1
 
-class IMU:
-    WHITE_TILE_CUTOFF = 650
 
-    def __init__(self, leftMotor: Motor, rightMotor: Motor, camera: Camera, accelerometer: Accelerometer, gyro: Gyro, groundSensors: list[DistanceSensor], distanceSensors: list[DistanceSensor]):
-        self.leftMotor = leftMotor
-        self.rightMotor = rightMotor
-        self.camera = camera
-        self.groundSensors = groundSensors
-        self.distanceSensors = distanceSensors
+    
+    def facingEndWall(self):
+        return self.facingGreenWall
+    
+    def getMovementVector(self, seconds: float):
+        WHEEL_DIAMETER = 2 * pi * 0.00205
 
-        self.accel = AccelerometerWrapper(accelerometer)
+        lVel = self.leftMotor.getVelocity()
+        rVel = self.rightMotor.getVelocity()
+
+        if lVel == rVel:
+            return (0, lVel * seconds * WHEEL_DIAMETER)
+        
+        if lVel < 0 != rVel < 0:
+            return (0, 0)
+
+        x = 0.0052
+        a = max(lVel, rVel)
+        b = min(lVel, rVel)
+        r = b * x / (a - b)
+
+        theta = a / (r + x)
+
+        dForward = (r + x / 2) * cos(theta)
+        dSide = (r + x / 2) * sin(theta)
+
+        if rVel > lVel:
+            dSide = -dSide
+
+        dForward *= WHEEL_DIAMETER * seconds
+        dSide *= WHEEL_DIAMETER * seconds
+
+        return (dSide, dForward)
+    
+
+def getDirection(angle: float) -> Literal["NORTH", "EAST", "SOUTH", "WEST"]:
+        if angle < -135:
+            return "NORTH"
+        elif angle < -45:
+            return "EAST"
+        elif angle < 45:
+            return "SOUTH"
+        elif angle < 135:
+            return "WEST"
+        
+        return "SOUTH"
+
 
         self.gyro = GyroWrapper(gyro)
 
         self.gyro.setMode("degrees")
 
         self.wallStatus = [False, False, False, False, False, False]
+
+        self.facingGreenWall = False
+        self.facingRedWall = False
         
         whiteVotes = 0
 
@@ -562,6 +602,33 @@ class IMU:
 
         self.y += distance * cos(angle)
         self.x += distance * sin(-angle)
+
+        self.facingRedWall = False
+        self.facingGreenWall = False
+
+        cameraImage = self.camera.getImageArray()
+        r, g, b = cameraImage[IMU.CAMERA_PIXEL_X][IMU.CAMERA_PIXEL_Y]
+
+        if r > 200 and g < 50 and b < 50:
+            redHeight = 0
+            for i in range(0, self.camera.getHeight()):
+                r, g, b = cameraImage[IMU.CAMERA_PIXEL_X][i]
+                if r > 200 and g < 50 and b < 50:
+                    redHeight += 1
+            
+            if redHeight >= 30:
+                self.facingRedWall = True
+    
+        if g > 200 and r < 50 and b < 50:
+            greenHeight = 0
+            for i in range(0, self.camera.getHeight()):
+                r, g, b = cameraImage[IMU.CAMERA_PIXEL_X][i]
+                if g > 200 and r < 50 and b < 50:
+                    greenHeight += 1
+            
+            if greenHeight >= 30:
+                self.facingGreenWall = True
+            
 
     def getRotation(self) -> float:
         return self.gyro.getZ()
@@ -661,6 +728,12 @@ class IMU:
     
     def getTileColor(self):
         return self.tileColor
+    
+    def facingStartWall(self):
+        return self.facingRedWall
+    
+    def facingEndWall(self):
+        return self.facingGreenWall
     
     def getMovementVector(self, seconds: float):
         WHEEL_DIAMETER = 2 * pi * 0.00205
