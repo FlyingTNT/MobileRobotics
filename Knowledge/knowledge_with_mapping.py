@@ -20,6 +20,8 @@ SOUTH = "SOUTH"
 EAST = "EAST"
 WEST = "WEST"
 
+from collections import deque
+
 
 class GridData:
     def __init__(self, row=None, col=None):
@@ -59,9 +61,13 @@ class Maze:
         self.current = self.root
         self.graph = None
 
+        # save the end tile when its found
+        self.end = None
+
         # store all grid data in a dictionary
         # grids are stored by their key as a tuple (row, col)
         self.cache = {}
+        self.cache[(0, 0)] = self.root
 
         # keep track of grid bounds for printing out the matrix
         self.max_col = 0
@@ -70,14 +76,13 @@ class Maze:
         self.min_row = 0
 
     def _add_neighbor(self, direction):
-        # new grid object to add information to
         new_grid = GridData()
+
         match direction:
             case "NORTH":
                 row_update = self.current.row + 1
                 if row_update > self.max_row:
                     self.max_row = row_update
-
                 new_grid.row = row_update
                 new_grid.col = self.current.col
                 new_grid.south = False
@@ -86,7 +91,6 @@ class Maze:
                 row_update = self.current.row - 1
                 if row_update < self.min_row:
                     self.min_row = row_update
-
                 new_grid.row = row_update
                 new_grid.col = self.current.col
                 new_grid.north = False
@@ -95,7 +99,6 @@ class Maze:
                 col_update = self.current.col + 1
                 if col_update > self.max_col:
                     self.max_col = col_update
-
                 new_grid.col = col_update
                 new_grid.row = self.current.row
                 new_grid.west = False
@@ -104,14 +107,15 @@ class Maze:
                 col_update = self.current.col - 1
                 if col_update < self.min_col:
                     self.min_col = col_update
-
                 new_grid.col = col_update
                 new_grid.row = self.current.row
                 new_grid.east = False
 
-        # add new grid to the structure, then update the current grid
-        self.current.next = new_grid
+        # cache nodes
         self.cache[(self.current.row, self.current.col)] = self.current
+        self.cache[(new_grid.row, new_grid.col)] = new_grid
+
+        self.current.next = new_grid
         self.current = new_grid
 
     def add_node(self, direction):
@@ -160,6 +164,10 @@ class Maze:
     def print_moves(self):
         for each in self.cache.values():
             print(each)
+
+    def maze_file(self):
+        with open('maze.txt', 'w') as f:
+            f.write('')
 
     def print_maze(self):
         """
@@ -220,6 +228,7 @@ class Maze:
             with open('maze.txt', 'a') as f:
                 f.write(output + "\n")
             print(output)
+
     def build_graph(self):
         # handle graphs with non-zero starting location
         graph_width = (self.max_col - self.min_col) + 1
@@ -233,10 +242,11 @@ class Maze:
             grid_row = coordinate[0]
             grid_col = coordinate[1]
             data = grid[1]
-            
+
             # insert the encoded wall count into the graph at correct index
             self.graph[grid_row - self.min_row][grid_col - self.min_col] = data.walls_to_bits()
         self.graph.reverse()
+
     def print_graph(self):
 
         for row in range(len(self.graph)):
@@ -249,6 +259,70 @@ class Maze:
 
     def fetch_tile(self, row, col):
         return self.cache[(row, col)]
+
+    def bfs_path(self, goal=None, start=(0, 0)):
+        """
+        start = (row,col)
+        goal = (row,col)
+
+        returns list of coordinates representing shortest path
+        """
+        if not goal:
+            goal = self.end
+
+        DIRS = {
+            NORTH: (1, 0),
+            SOUTH: (-1, 0),
+            EAST: (0, 1),
+            WEST: (0, -1)
+        }
+
+        visited = set()
+        parent = {}
+
+        q = deque()
+        q.append(start)
+        visited.add(start)
+
+        while q:
+            row, col = q.popleft()
+
+            if (row, col) == goal:
+                break
+
+            tile = self.cache[(row, col)]
+
+            directions = [
+                (NORTH, tile.north),
+                (EAST, tile.east),
+                (SOUTH, tile.south),
+                (WEST, tile.west)
+            ]
+
+            for direction, wall in directions:
+                if not wall:  # open path
+                    dr, dc = DIRS[direction]
+                    neighbor = (row + dr, col + dc)
+
+                    if neighbor in self.cache and neighbor not in visited:
+                        visited.add(neighbor)
+                        parent[neighbor] = (row, col)
+                        q.append(neighbor)
+
+        # reconstruct path
+        path = []
+        node = goal
+
+        while node != start:
+            path.append(node)
+            node = parent[node]
+
+        path.append(start)
+        path.reverse()
+
+        return path
+
+
         
 #####################
 # END AIDANS SHIT
