@@ -533,6 +533,7 @@ def main():
         if imu.facingStartWall():
            path = maze.bfs_path()
            print(f"Solution: {path}")
+           break
 
         if abs(diff) > 0.1:
             s = 2 * diff / 90
@@ -546,6 +547,74 @@ def main():
             rightMotor.setVelocity(FORWARD_SPEED)
 
         wasBetweenFB = imu.isBetweenTilesForwardsBack()
+
+    turn = 90
+
+    if imu.getIntraTileX() > 0:
+        turn *= -1
+
+    if imu.getFacingDirection() == "n":
+        turn *= -1
+    
+    turnTarget += turn
+
+    while robot.step(timestep) != -1:
+        imu.step(timestep)
+
+        angle = imu.getRotation()
+
+        diff = getAngleDiff(turnTarget, angle)
+
+        if abs(diff) > 0.1:
+            s = 2 * diff / 90
+            if abs(s) > 1:
+                s /= abs(s)
+
+            leftMotor.setVelocity(-FORWARD_SPEED * s)
+            rightMotor.setVelocity(s * FORWARD_SPEED)
+        else:
+            break
+    
+    sign = 1 if imu.getIntraTileX() > 0 else -1
+
+    while robot.step(timestep) != -1:
+        imu.step(timestep)
+
+        if (imu.getIntraTileX() > 0) == (sign > 0):
+            leftMotor.setVelocity(FORWARD_SPEED * 2 * imu.getIntraTileX() + 0.2)
+            rightMotor.setVelocity(FORWARD_SPEED * 2 * imu.getIntraTileX() + 0.2)
+        else:
+            break
+
+    turnTarget = 0
+
+    while robot.step(timestep) != -1:
+        imu.step(timestep)
+
+        angle = imu.getRotation()
+
+        diff = getAngleDiff(turnTarget, angle)
+
+        if abs(diff) > 0.1:
+            s = 2 * diff / 90
+            if abs(s) > 1:
+                s /= abs(s)
+
+            leftMotor.setVelocity(-FORWARD_SPEED * s)
+            rightMotor.setVelocity(s * FORWARD_SPEED)
+        else:
+            break
+
+    keepBack = 8
+
+    while robot.step(timestep) != -1 and keepBack > 0:
+        imu.step(timestep)
+
+        leftMotor.setVelocity(-FORWARD_SPEED / 2)
+        rightMotor.setVelocity(-FORWARD_SPEED / 2)
+
+        if imu.seesWallBack():
+            keepBack -= 1
 
 def getAngleDiff(base: float, angle: float) -> float:
     diff = base - angle
