@@ -571,53 +571,20 @@ def reverseLookup(sensor: DistanceSensor) -> float:
     return -1
 
 
-    
-    def facingEndWall(self):
-        return self.facingGreenWall
-    
-    def getMovementVector(self, seconds: float):
-        WHEEL_DIAMETER = 2 * pi * 0.00205
+class IMU:
+    WHITE_TILE_CUTOFF = 650
 
-        lVel = self.leftMotor.getVelocity()
-        rVel = self.rightMotor.getVelocity()
+    CAMERA_PIXEL_X = 22
+    CAMERA_PIXEL_Y = 17
 
-        if lVel == rVel:
-            return (0, lVel * seconds * WHEEL_DIAMETER)
-        
-        if lVel < 0 != rVel < 0:
-            return (0, 0)
+    def __init__(self, leftMotor: Motor, rightMotor: Motor, camera: Camera, accelerometer: Accelerometer, gyro: Gyro, groundSensors: list[DistanceSensor], distanceSensors: list[DistanceSensor]):
+        self.leftMotor = leftMotor
+        self.rightMotor = rightMotor
+        self.camera = camera
+        self.groundSensors = groundSensors
+        self.distanceSensors = distanceSensors
 
-        x = 0.0052
-        a = max(lVel, rVel)
-        b = min(lVel, rVel)
-        r = b * x / (a - b)
-
-        theta = a / (r + x)
-
-        dForward = (r + x / 2) * cos(theta)
-        dSide = (r + x / 2) * sin(theta)
-
-        if rVel > lVel:
-            dSide = -dSide
-
-        dForward *= WHEEL_DIAMETER * seconds
-        dSide *= WHEEL_DIAMETER * seconds
-
-        return (dSide, dForward)
-    
-
-def getDirection(angle: float) -> Literal["NORTH", "EAST", "SOUTH", "WEST"]:
-        if angle < -135:
-            return "NORTH"
-        elif angle < -45:
-            return "EAST"
-        elif angle < 45:
-            return "SOUTH"
-        elif angle < 135:
-            return "WEST"
-        
-        return "SOUTH"
-
+        self.accel = AccelerometerWrapper(accelerometer)
 
         self.gyro = GyroWrapper(gyro)
 
