@@ -457,6 +457,7 @@ def main():
         print("----------==========----------")
         imu.step(timestep)
         
+        # Maze building step
         cur_row = imu.getTileY()
         cur_col = imu.getTileX()
         cur_rot = round(imu.getRotation())
@@ -476,7 +477,8 @@ def main():
             last_tile = (cur_row, cur_col)
             maze.build_graph()
             maze.print_maze()
-        #print(f"{maze.cache}")
+        
+        # Print stuff
         print(f"{imu.getX():0.3f}, {imu.getY():0.3f} @ {cur_rot}")
         print(f"{imu.getIntraTileX()}, {imu.getIntraTileY()} in tile {(cur_col, cur_row)}")
         print(f"Between: {imu.isBeteenTiles()}")
@@ -491,6 +493,7 @@ def main():
         print(f"Start: {imu.facingStartWall()}")
         print(f"End: {imu.facingEndWall()}")
 
+        # Handle updating the turnTarget (when bufferTurn gets to zero, turn L/R based on what our sensors tell us)
         if bufferTurn >= 0:
             if bufferTurn == 0:
                 # Turn randomly
@@ -517,47 +520,49 @@ def main():
 
         angle = imu.getRotation()
 
+        # Get the difference between what we're facing and our target
         diff = getAngleDiff(turnTarget, angle)
 
+        # If we just crossed into a new tile and we don't see a wall L/R, turn in three steps to try and follow the wall
         if wasBetweenFB and not imu.isBetweenTilesForwardsBack() and not imu.seesWallRight() and not imu.seesWallLeft():
             bufferTurn = 3
 
+        # If we are about to run into a wall, turn in one step
         if imu.seesWallForward() and abs(diff) < 2 and bufferTurn < 0:
             bufferTurn = 1
-            
+        
+        # If we're facing the end wall, mark it and buffer a turn (turn as soon as we see it b/c it confuses the distance sensors)
         if imu.facingEndWall() and not hasFoundEnd:
             maze.end = last_tile
             bufferTurn = 1
             hasFoundEnd = True
             
+        # If we're back to the start, move on to the next loop
         if imu.facingStartWall():
            path = maze.bfs_path()
            print(f"Solution: {path}")
            break
 
+        # If we are more than 0.1 degrees away from the target angle, stop and turn towards the angle
         if abs(diff) > 0.1:
-            s = 2 * diff / 90
+            # Scale the speed so we are going 100% at greater than 45 degree diff and we slow down as we get closer so we don't overshoot
+            s = diff / 45
             if abs(s) > 1:
                 s /= abs(s)
 
             leftMotor.setVelocity(-FORWARD_SPEED * s)
             rightMotor.setVelocity(s * FORWARD_SPEED)
-        else:
+        else: # If we're at the right angle, just go forwards
             leftMotor.setVelocity(FORWARD_SPEED)
             rightMotor.setVelocity(FORWARD_SPEED)
 
         wasBetweenFB = imu.isBetweenTilesForwardsBack()
 
-    turn = 90
+    turn = -90 if imu.seesWallLeft() else 90
 
-    if imu.getIntraTileX() > 0:
-        turn *= -1
-
-    if imu.getFacingDirection() == "n":
-        turn *= -1
-    
     turnTarget += turn
 
+    # Turn so we're facing away from the wall
     while robot.step(timestep) != -1:
         imu.step(timestep)
 
@@ -577,6 +582,7 @@ def main():
     
     sign = 1 if imu.getIntraTileX() > 0 else -1
 
+    # Go forward so we're centered on the red starting tile
     while robot.step(timestep) != -1:
         imu.step(timestep)
 
@@ -588,6 +594,7 @@ def main():
 
     turnTarget = 0
 
+    # Rotate so we're facing away from the red starting tile
     while robot.step(timestep) != -1:
         imu.step(timestep)
 
@@ -607,6 +614,7 @@ def main():
 
     keepBack = 8
 
+    # Back into the red starting wall
     while robot.step(timestep) != -1 and keepBack > 0:
         imu.step(timestep)
 
@@ -616,6 +624,24 @@ def main():
         if imu.seesWallBack():
             keepBack -= 1
 
+    # Delaney add any setup code here
+    path = maze.bfs_path()
+
+    while robot.step(timestep) != -1:
+        print("----------==========----------")
+        imu.step(timestep)
+        
+        currentTileY = imu.getTileY()
+        currentTileX = imu.getTileX()
+        rotation = round(imu.getRotation())
+        print(f"{imu.getX():0.3f}, {imu.getY():0.3f} @ {rotation}")
+        print(f"{imu.getIntraTileX()}, {imu.getIntraTileY()} in tile {(currentTileX, currentTileY)}")
+
+        # Delaney add any looping code here
+        # The imu object has a bunch of values for knowing where you are that may be useful to you. I've printed some above
+        # I would definate use getAngleDiff if you're getting the difference between two angles
+        # because it handles wrapping -180 back to 180 (the robot's angles go from -180 to 180), where -180 = 180
+        
 def getAngleDiff(base: float, angle: float) -> float:
     diff = base - angle
 
