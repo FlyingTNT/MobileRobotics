@@ -17,6 +17,9 @@ right_motor.setVelocity(0.0)
 camera = robot.getCamera("camera")
 camera.enable(TIME_STEP)
 
+radiusMod = 1
+misses = 0
+
 prox_sensors = []
 for i in range(8):
     sensor = robot.getDistanceSensor(f"ps{i}")
@@ -32,8 +35,8 @@ while robot.step(TIME_STEP) != -1:
     front_wall = prox_sensors[0].getValue() > 80
 
     if g > 200 and r < 80 and b < 80 and front_wall:
-        left_motor.setVelocity(0.0)
-        right_motor.setVelocity(0.0)
+        left_motor.setVelocity(0.5)
+        right_motor.setVelocity(0.5)
         break
 
     left_speed = MAX_SPEED
@@ -41,6 +44,15 @@ while robot.step(TIME_STEP) != -1:
 
     right_wall = prox_sensors[2].getValue() > 80
     right_corner = prox_sensors[1].getValue() > 80
+    
+    if misses > -1 and not right_wall:
+        misses += 1
+    else:
+        misses = -1
+        radiusMod = 1
+    
+    if misses % 10 == 0:
+        radiusMod *= 0.9
 
     if front_wall:
         left_speed = -MAX_SPEED
@@ -51,7 +63,7 @@ while robot.step(TIME_STEP) != -1:
             right_speed = MAX_SPEED
         else:
             left_speed = MAX_SPEED
-            right_speed = MAX_SPEED / 8
+            right_speed = MAX_SPEED / (8 * radiusMod)
         if right_corner:
             left_speed = MAX_SPEED / 8
             right_speed = MAX_SPEED
