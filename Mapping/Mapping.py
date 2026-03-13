@@ -624,6 +624,8 @@ def main():
         if imu.seesWallBack():
             keepBack -= 1
 
+    imu.y = -0.18
+
    #----------------
     # Delaney code
     #----------------
