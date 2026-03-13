@@ -481,6 +481,7 @@ def main():
         # Print stuff
         print(f"{imu.getX():0.3f}, {imu.getY():0.3f} @ {cur_rot}")
         print(f"{imu.getIntraTileX()}, {imu.getIntraTileY()} in tile {(cur_col, cur_row)}")
+        print(f"Floor: {imu.getTileColor()} {imu.tileVal}")
         print(f"Between: {imu.isBeteenTiles()}")
         print(f"Between F/B: {imu.isBetweenTilesForwardsBack()}")
         print(f"Between L/R: {imu.isBetweenTilesLeftRight()}")
@@ -558,6 +559,8 @@ def main():
 
         wasBetweenFB = imu.isBetweenTilesForwardsBack()
 
+    imu.disableCorrection = True
+
     turn = -90 if imu.seesWallLeft() else 90
 
     turnTarget += turn
@@ -624,17 +627,29 @@ def main():
         if imu.seesWallBack():
             keepBack -= 1
 
-    imu.y = -0.18
+    imu.y = -0.16
     #----------------
     # Delaney code
     #----------------
     path = maze.bfs_path()
     path_index = 1
     print(f"=== PATH TO GOAL: {path} ===")
+    
+    def idle(steps: int):
+        while robot.step(timestep) != -1 and steps >= 0:
+            imu.step(timestep)
+            steps -= 1
+        
+    disableSteps = 10
 
     while robot.step(timestep) != -1:
         print("----------==========----------")
         imu.step(timestep)
+
+        if disableSteps > 0:
+            disableSteps -= 1
+            if disableSteps == 0:
+                imu.disableCorrection = False
 
         currentTileY = imu.getTileY()
         currentTileX = imu.getTileX()
@@ -644,14 +659,17 @@ def main():
         print(f"{imu.getX():0.3f}, {imu.getY():0.3f} @ {rotation}")
         print(f"Target: {path[path_index] if path_index < len(path) else 'DONE'} (step {path_index}/{len(path)-1})")
 
+        print(f"{imu.getIntraTileX()}, {imu.getIntraTileY()} in tile {(currentTileX, currentTileY)}")
+        print(f"Floor: {imu.getTileColor()} {imu.tileVal}")
+
 
         if path_index >= len(path):
             # Drive forward to finish
-            for _ in range(60):
-                robot.step(timestep)
-                imu.step(timestep)
-                leftMotor.setVelocity(FORWARD_SPEED)
-                rightMotor.setVelocity(FORWARD_SPEED)
+            leftMotor.setVelocity(FORWARD_SPEED)
+            rightMotor.setVelocity(FORWARD_SPEED)
+            
+            idle(60)
+                
             leftMotor.setVelocity(0)
             rightMotor.setVelocity(0)
             print("=== ARRIVED AT GOAL ===")
@@ -665,11 +683,10 @@ def main():
             path_index += 1
             print(f"Reached tile {cur_tile}, moving to next")
             # Drive forward
-            for _ in range(10):
-                robot.step(timestep)
-                imu.step(timestep)
-                leftMotor.setVelocity(FORWARD_SPEED)
-                rightMotor.setVelocity(FORWARD_SPEED)
+            leftMotor.setVelocity(FORWARD_SPEED)
+            rightMotor.setVelocity(FORWARD_SPEED)
+            idle(10)
+                
             continue
 
         # Work out which direction to face
@@ -685,7 +702,7 @@ def main():
         diff = getAngleDiff(needed_angle, rotation)
 
         # Turn or drive
-        if abs(diff) > 2:
+        if abs(diff) > 0.1:
             s = 2 * diff / 90
             if abs(s) > 1:
                 s /= abs(s)
@@ -769,11 +786,15 @@ class IMU:
         
         whiteVotes = 0
 
+        self.turnCount = 100
+
         for sensor in self.groundSensors:
             if sensor.getValue() > IMU.WHITE_TILE_CUTOFF:
                 whiteVotes += 1
         
         self.tileColor = "white" if whiteVotes >= 2 else "brown"
+        self.tileVal = 0
+        self.disableCorrection = False
 
         self.x = 0
         self.y = 0
@@ -783,16 +804,24 @@ class IMU:
         self.accel.step(timeStep)
         self.gyro.step(timeStep)
 
+        self.turnCount += 1
+
         if self.leftMotor.getVelocity() == -self.rightMotor.getVelocity():
             self.accel._xVelocity = 0
             self.accel._yVelocity = 0
             self.accel._zVelocity = 0
+            self.turnCount = 0
 
         whiteVotes = 0
 
+        self.tileVal = 0
+
         for sensor in self.groundSensors:
+            self.tileVal += sensor.getValue()
             if sensor.getValue() > IMU.WHITE_TILE_CUTOFF:
                 whiteVotes += 1
+        
+        self.tileVal /= 3
 
         self.wallStatus[0] = reverseLookup(self.distanceSensors[LEFT_17]) > 0 and reverseLookup(self.distanceSensors[RIGHT_17]) > 0
         self.wallStatus[1] = reverseLookup(self.distanceSensors[RIGHT_90]) > 0
@@ -803,8 +832,11 @@ class IMU:
 
         newTileColor = "white" if whiteVotes >= 2 else "brown"
         
-        if newTileColor != self.tileColor:
+        if newTileColor != self.tileColor and (self.turnCount > 5):
             self.tileColor = newTileColor
+
+            if self.turnCount > 10 and not self.disableCorrection:
+                self._correctBecauseChangeTiles()
 
 
         angle = self.gyro.getZ() * GyroWrapper.DEGREES_TO_RADS
@@ -841,7 +873,34 @@ class IMU:
             
             if greenHeight >= 30:
                 self.facingGreenWall = True
-            
+
+    def _correctBecauseChangeTiles(self):
+        correct = 0.184
+
+        dir = self.getFacingDirection()
+
+        current = 0
+
+        match dir:
+            case "n":
+                current = self.getIntraTileY()
+            case "e":
+                current = self.getIntraTileX()
+            case "s":
+                current = self.getIntraTileY()
+                correct = -correct
+            case "w":
+                current = self.getIntraTileX()
+                correct = -correct
+        
+        correction = correct - current
+
+        print(f"Correcting by {correction} for {current} vs {correct}")
+
+        if dir == "n" or dir == "s":
+            self.y += correction
+        else:
+            self.x += correction
 
     def getRotation(self) -> float:
         return self.gyro.getZ()
