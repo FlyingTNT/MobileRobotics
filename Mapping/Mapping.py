@@ -624,23 +624,59 @@ def main():
         if imu.seesWallBack():
             keepBack -= 1
 
-    # Delaney add any setup code here
+   #----------------
+    # Delaney code
+    #----------------
     path = maze.bfs_path()
+    path_index = 1
+    print(f"=== PATH TO GOAL: {path} ===")
 
     while robot.step(timestep) != -1:
         print("----------==========----------")
         imu.step(timestep)
-        
+
         currentTileY = imu.getTileY()
         currentTileX = imu.getTileX()
         rotation = round(imu.getRotation())
-        print(f"{imu.getX():0.3f}, {imu.getY():0.3f} @ {rotation}")
-        print(f"{imu.getIntraTileX()}, {imu.getIntraTileY()} in tile {(currentTileX, currentTileY)}")
+        cur_tile = (currentTileY, currentTileX)
 
-        # Delaney add any looping code here
-        # The imu object has a bunch of values for knowing where you are that may be useful to you. I've printed some above
-        # I would definate use getAngleDiff if you're getting the difference between two angles
-        # because it handles wrapping -180 back to 180 (the robot's angles go from -180 to 180), where -180 = 180
+        print(f"{imu.getX():0.3f}, {imu.getY():0.3f} @ {rotation}")
+        print(f"Target: {path[path_index] if path_index < len(path) else 'DONE'} (step {path_index}/{len(path)-1})")
+
+        if path_index >= len(path):
+            leftMotor.setVelocity(0)
+            rightMotor.setVelocity(0)
+            print("=== ARRIVED AT GOAL ===")
+            break
+
+        target_tile = path[path_index]
+        target_row, target_col = target_tile
+
+        if cur_tile == target_tile:
+            path_index += 1
+            print(f"Reached tile {cur_tile}, moving to next")
+            continue
+
+        dr = target_row - currentTileY
+        dc = target_col - currentTileX
+
+        if dr == 1:    needed_angle = 0
+        elif dr == -1: needed_angle = 180
+        elif dc == 1:  needed_angle = -90
+        elif dc == -1: needed_angle = 90
+        else:          needed_angle = rotation
+
+        diff = getAngleDiff(needed_angle, rotation)
+
+        if abs(diff) > 2:
+            s = 2 * diff / 90
+            if abs(s) > 1:
+                s /= abs(s)
+            leftMotor.setVelocity(-FORWARD_SPEED * s)
+            rightMotor.setVelocity(s * FORWARD_SPEED)
+        else:
+            leftMotor.setVelocity(FORWARD_SPEED)
+            rightMotor.setVelocity(FORWARD_SPEED)
         
 def getAngleDiff(base: float, angle: float) -> float:
     diff = base - angle
