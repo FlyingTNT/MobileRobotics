@@ -625,8 +625,7 @@ def main():
             keepBack -= 1
 
     imu.y = -0.18
-
-   #----------------
+    #----------------
     # Delaney code
     #----------------
     path = maze.bfs_path()
@@ -645,7 +644,14 @@ def main():
         print(f"{imu.getX():0.3f}, {imu.getY():0.3f} @ {rotation}")
         print(f"Target: {path[path_index] if path_index < len(path) else 'DONE'} (step {path_index}/{len(path)-1})")
 
+
         if path_index >= len(path):
+            # Drive forward to finish
+            for _ in range(60):
+                robot.step(timestep)
+                imu.step(timestep)
+                leftMotor.setVelocity(FORWARD_SPEED)
+                rightMotor.setVelocity(FORWARD_SPEED)
             leftMotor.setVelocity(0)
             rightMotor.setVelocity(0)
             print("=== ARRIVED AT GOAL ===")
@@ -654,11 +660,19 @@ def main():
         target_tile = path[path_index]
         target_row, target_col = target_tile
 
+        # Reached next tile, advance
         if cur_tile == target_tile:
             path_index += 1
             print(f"Reached tile {cur_tile}, moving to next")
+            # Drive forward
+            for _ in range(10):
+                robot.step(timestep)
+                imu.step(timestep)
+                leftMotor.setVelocity(FORWARD_SPEED)
+                rightMotor.setVelocity(FORWARD_SPEED)
             continue
 
+        # Work out which direction to face
         dr = target_row - currentTileY
         dc = target_col - currentTileX
 
@@ -670,6 +684,7 @@ def main():
 
         diff = getAngleDiff(needed_angle, rotation)
 
+        # Turn or drive
         if abs(diff) > 2:
             s = 2 * diff / 90
             if abs(s) > 1:
