@@ -1,4 +1,4 @@
-from controller import Robot, DistanceSensor, Motor, Camera, Gyro, Accelerometer, Speaker, LightSensor
+from controller import Robot, DistanceSensor, Motor, Camera, Gyro, Accelerometer, LightSensor, LED
 from typing import Literal
 from math import pi, pow, isnan, sin, cos, floor
 from random import getrandbits
@@ -426,19 +426,9 @@ def main():
 
         print(sensor.getLookupTable())
 
-    lightSensors: list[LightSensor] = []
-
-    for i in range(8):
-        sensor = robot.getDevice(f"ls{i}")
-        if not isinstance(sensor, LightSensor):
-            continue
-
-        sensor.enable(timestep)
-
-        lightSensors.append(sensor)
-
-        print(sensor.getLookupTable())
-
+    led8 = robot.getDevice("led8")
+    if not isinstance(led8, LED):
+        return
 
     imu = IMU(leftMotor, rightMotor, camera, accelerometer, gyro, groundSensors, distanceSensors)
 
@@ -628,6 +618,9 @@ def main():
             keepBack -= 1
 
     imu.y = -0.16
+
+    led8.set(True)
+
     #----------------
     # Delaney code
     #----------------
