@@ -22,7 +22,6 @@ WEST = "WEST"
 
 from collections import deque
 
-
 class GridData:
     def __init__(self, row=None, col=None):
         self.row = row  # int
@@ -529,7 +528,7 @@ def main():
             hasFoundEnd = True
             
         # If we're back to the start, move on to the next loop
-        if imu.facingStartWall():
+        if (imu.facingStartWall() or (cur_col == 0 and cur_row == 0)) and hasFoundEnd:
            path = maze.bfs_path()
            print(f"Solution: {path}")
            break
@@ -551,27 +550,28 @@ def main():
 
     imu.disableCorrection = True
 
-    turn = -90 if imu.seesWallLeft() else 90
+    if imu.getFacingDirection() == "n" or imu.getFacingDirection() == "s":
+        turn = -90 if imu.seesWallLeft() else 90
 
-    turnTarget += turn
+        turnTarget += turn
 
-    # Turn so we're facing away from the wall
-    while robot.step(timestep) != -1:
-        imu.step(timestep)
+        # Turn so we're facing away from the wall
+        while robot.step(timestep) != -1:
+            imu.step(timestep)
 
-        angle = imu.getRotation()
+            angle = imu.getRotation()
 
-        diff = getAngleDiff(turnTarget, angle)
+            diff = getAngleDiff(turnTarget, angle)
 
-        if abs(diff) > 0.1:
-            s = 2 * diff / 90
-            if abs(s) > 1:
-                s /= abs(s)
+            if abs(diff) > 0.1:
+                s = 2 * diff / 90
+                if abs(s) > 1:
+                    s /= abs(s)
 
-            leftMotor.setVelocity(-FORWARD_SPEED * s)
-            rightMotor.setVelocity(s * FORWARD_SPEED)
-        else:
-            break
+                leftMotor.setVelocity(-FORWARD_SPEED * s)
+                rightMotor.setVelocity(s * FORWARD_SPEED)
+            else:
+                break
     
     sign = 1 if imu.getIntraTileX() > 0 else -1
 
