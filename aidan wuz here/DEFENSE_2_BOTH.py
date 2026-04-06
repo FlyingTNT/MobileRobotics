@@ -859,7 +859,7 @@ while robot.step(TIME_STEP) != -1:
             if xy_avg != goal_camping:
                 # handle imu errors
                 if not imu.canBeTrusted: imu_errors += 1
-                if imu_errors > 10: MODE = "UHOH"  # if the imu starts acting a fool just go after ball
+                if imu_errors > 10: MODE = "BALLCHASE"  # if the imu starts acting a fool just go after ball
 
                 print(f"IMU Trusted: {imu.canBeTrusted}\nIMU Errors: {imu_errors}")
                 tar_rot = round(math.atan(y/x) * 180 / pi, 2)
@@ -894,23 +894,23 @@ while robot.step(TIME_STEP) != -1:
 
         case "WAITING":
 
-            if not imu.knowsWhereBallIs():
+            if not imu.canSeeBall:
                 error_count += 1
                 if error_count > 10:
                     MODE = "START"
                     error_count = 0
                     print("Chat Log: Defending.")
 
-            elif (ball_dist < 0.5) or (canon_time > 15):
+            elif (ball_dist < 0.7) or (canon_time > 15) or (abs(ball_angle) > 30):
                 if error_count > 0:
                     error_count -= 1
 
                 if ball_angle < -5 and not imu.isBallProbablyTooCloseToSee():
-                    leftSpeed = -10 if ball_dist >= 0.3 else -4
+                    leftSpeed = -10 if ball_dist >= 0.6 else -4
                     rightSpeed = +10
 
                 elif ball_angle > 5 and not imu.isBallProbablyTooCloseToSee():
-                    rightSpeed = -10 if ball_dist >= 0.3 else -4
+                    rightSpeed = -10 if ball_dist >= 0.6 else -4
                     leftSpeed = +10
 
                 else:
