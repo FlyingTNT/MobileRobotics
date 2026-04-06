@@ -1,11 +1,17 @@
 from controller import Robot, Lidar, Motor, DistanceSensor, Camera, LidarPoint
-from math import sin, cos, isinf, sqrt, atan2, pi
+from math import sin, cos, tan, isinf, isnan, sqrt, atan2, pi
+from typing import Literal
+import traceback
+import sys
 import math
+import random
 
 TIME_STEP = 64
 MAX_SPEED = 10
 
 robot = Robot()
+
+
 
 # ------------------ CAMERA ------------------
 camera = robot.getDevice('camera')
@@ -49,12 +55,11 @@ def set_speed(left, right):
     wheels[3].setVelocity(right)  # back right
     
 # ------------------ DISTANCE SENSORS ------------------
-ds_names = ['ds_front_left', 'ds_front_right', 'ds_back', 'ds_right', 'ds_left']
-distance_sensors = {}
-for name in ds_names:
-    ds = robot.getDevice(name)
-    ds.enable(TIME_STEP)
-    distance_sensors[name] = ds
+frontLeftDistance = robot.getDevice("ds_front_left")
+frontRightDistance = robot.getDevice("ds_front_right")
+backDistance = robot.getDevice("ds_back")
+rightDistance = robot.getDevice("ds_right")
+leftDistance = robot.getDevice("ds_left")
 
 def get_ds(name):
     """
@@ -84,53 +89,13 @@ def is_yellow(r, g, b):
         return True
     return False
 
-def get_lidar_distances():
-    """
-    Returns a flat list of distance readings (in meters) from the lidar.
 
-    - Each value is the distance to the nearest obstacle in that direction.
-    - Values equal to 'inf' mean nothing was detected in that direction.
-    - The list goes left-to-right across the lidar's field of view.
-
-    Example usage:
-        distances = get_lidar_distances()
-        front_distance = distances[len(distances) // 2]  # center ray
-    """
-    return list(lidar.getRangeImage())
-
-def get_lidar_sector(distances, sector='front'):
-    """
-    Returns the minimum distance detected in a named sector of the lidar.
-
-    Sectors divide the lidar's view into five equal zones:
-        'left', 'front-left', 'front', 'front-right', 'right'
-
-    Parameters:
-        distances (list): output from get_lidar_distances()
-        sector (str): one of the five sector names above
-
-    Returns:
-        float: closest distance (meters) in that sector, or inf if nothing detected
-
-    Example usage:
-        distances = get_lidar_distances()
-        if get_lidar_sector(distances, 'front') < 0.3:
-            print("Obstacle ahead!")
-    """
-    n = len(distances)
-    sectors = {
-        'left':        distances[0           : n // 5],
-        'front-left':  distances[n // 5      : 2 * n // 5],
-        'front':       distances[2 * n // 5  : 3 * n // 5],
-        'front-right': distances[3 * n // 5  : 4 * n // 5],
-        'right':       distances[4 * n // 5  :],
-    }
-    readings = sectors.get(sector, [])
-    return min((d for d in readings if not math.isinf(d)), default=float('inf'))
+CAMERA_WIDTH = 1024
+CAMERA_FOV = 1.57
+TRUE_BALL_WIDTH = 0.04 * 2
 
 camera_upd = 0
 updates = 0
-camera_width = 1024
 def ColorCheck(color):
     '''
     color detector salvaged from my implementation of the first project
@@ -149,11 +114,11 @@ def ColorCheck(color):
         image = camera.getImage()
         # iterate through each pixel in the image
         target_row = 0
-        for pixel in range(0, camera_width):
+        for pixel in range(0, CAMERA_WIDTH):
             # extract pixel rgb vales, look for green
-            green = camera.imageGetGreen(image, camera_width, pixel, target_row)
-            blue = camera.imageGetBlue(image, camera_width, pixel, target_row)
-            red = camera.imageGetRed(image, camera_width, pixel, target_row)
+            green = camera.imageGetGreen(image, CAMERA_WIDTH, pixel, target_row)
+            blue = camera.imageGetBlue(image, CAMERA_WIDTH, pixel, target_row)
+            red = camera.imageGetRed(image, CAMERA_WIDTH, pixel, target_row)
 
             ###
             #print(f"{red}R {green}G {blue}B")
@@ -164,9 +129,13 @@ def ColorCheck(color):
                         # add a yellow pixel to all current image green pixels
                         pixels.append(pixel)
                 case "magenta":
-                    pass
+                    if ((red > 150 and blue > 150 ) and not (green > 100)):
+                        # add a yellow pixel to all current image green pixels
+                        pixels.append(pixel)
                 case "cyan":
-                    pass
+                    if ((blue > 150 and green > 150) and not (red > 100)):
+                        # add a yellow pixel to all current image green pixels
+                        pixels.append(pixel)
 
 
         if len(pixels) > 0:
@@ -176,14 +145,14 @@ def ColorCheck(color):
             try:
                 # return the distance from center (yes this should not be handled here but alas)
                 pixels.clear()
-                return (width, midpoint)# impportant yellow value here
+                return (width, midpoint)
 
             except:
                 # if this prints out you have bigger fish to fry 
                 print("if you're seeing this blame aidan")
                 return 0
         else:
-            print("you broke some shit dumbass")
+            print("no colored pixels")
 
         pixels.clear()
         return 0
@@ -218,7 +187,7 @@ def BDC(pixel_width):
     if pixel_width != 0:
         distance = constant/pixel_width
         return distance
-    return "no dadgum pixels"
+    return 67676767676767
 
 def go(speed: float, turn: float):
     leftSpeed = speed * (1 + turn)
@@ -236,6 +205,7 @@ def go(speed: float, turn: float):
     backRightMotor.setVelocity(MAX_MOTOR_SPEED * rightSpeed)
 
 ######################################################
+
 
 def getTrueDistance(sensor: DistanceSensor) -> float:
     value = sensor.getValue()
@@ -301,7 +271,6 @@ class IMU:
             if distSquared > maxLength:
                 maxLengthIndex = i
                 maxLength = distSquared
-
         startPoint = walls[maxLengthIndex - 1]
         endPoint = walls[maxLengthIndex]
 
@@ -338,7 +307,7 @@ class IMU:
 
     def getRotation(self):
         rot = 180 * self.spins + self.rotation
-        
+
         while rot > 180:
             rot -= 360
 
@@ -413,7 +382,6 @@ def DouglasPeucker(points: list[LidarPoint], start: int, end: int, epsilon: floa
         outPoints = [points[start], points[end]]
 
     return outPoints
-
 ######################################################
 
 
@@ -423,6 +391,8 @@ def xy_average(x_list, y_list):
     return (x_avg, y_avg)
 
 
+ENEMY_GOAL = "cyan"
+
 MODE = "START"
 imu = IMU(lidar, camera)
 canon_time = 0
@@ -431,15 +401,17 @@ x_decade = [None] * DECADE
 y_decade = [None] * DECADE
 xy_count = 0
 xy_avg = None
+
+imu_errors = 0
 # each tile is .25 meters long
 
 ### Autonomous period stuff ###
 xy_data_ready = False
-goal_camping = (-1.03, -0.12)
+goal_camping = (-1.06, -0.08)
 rotated_into_pos = False
 at_target = False
 forwards = False
-fuckup_count = 0
+error_count = 0
 
 ### Scoring stuff ###
 last_ball_pos = 0
@@ -447,7 +419,7 @@ enemy_goal = (1.1, 0)
 
 
 ### rocket league insults ###
-goal_msg = ["What a save!", "Nice block!", "Close one!", "Siiiick!", "Close one!"]
+goal_msg = ["What a save!", "Nice block!", "Close one!", "Siiiick!", "Whoops...", "No problem.", "Great Clear!", "Thanks!"]
 
 def calculate_transform(start, current_angle, dest):
     '''
@@ -466,10 +438,12 @@ def calculate_transform(start, current_angle, dest):
 print("glhf!")
 # ------------------ MAIN LOOP ------------------
 while robot.step(TIME_STEP) != -1:
+
     try:
         imu.step(TIME_STEP)
+    
     except:
-        print("dadgum imu brok (not my fault)")
+        print("dadgum imu broke")
     leftSpeed = 0.0
     rightSpeed = 0.0
 
@@ -479,12 +453,14 @@ while robot.step(TIME_STEP) != -1:
         xy_count += 1
         if xy_data_ready:
             xy_avg = xy_average(x_decade, y_decade)
-    else:
+    elif imu.canBeTrusted:
         xy_count = 1
         x_decade[0] = imu.getX()
         y_decade[0] = imu.getY()
         xy_avg = xy_average(x_decade, y_decade)
         xy_data_ready = True
+    else:
+        print("Bad imu data.")
 
     cur_rot = imu.getRotation()
     #print(cur_rot)
@@ -497,22 +473,53 @@ while robot.step(TIME_STEP) != -1:
         #print(BDC(yellow[0]))
         # print(angle_offset(yellow[1]))
         pass
+    def no_balls():
+        global error_count
+        if yellow == 0:
+            error_count += 1
+            if error_count > 10:
+                MODE = "POSITION"
+                error_count = 0
+                print("Back to goal camping")
+        elif error_count > 0:
+            error_count -= 1
+
+
+    print(f"XY_Average Position: {xy_avg}\n"
+          f"Rotation: {cur_rot}\n"
+          f"Mode: {MODE}")
 
     match MODE:
         case "START":
             # print(f"{round(imu.getX(), 2)}, {round(imu.getY(), 2)}")
+
+            rotated_into_pos = False
+            at_target = False
+            forwards = False
+
             if xy_avg != None: MODE = "POSITION"
-            print("Centering!")
+            print("Chat Log: Centering!")
         case "POSITION":
             # find displacement to own goal
             x = xy_avg[0] - goal_camping[0]
             y = xy_avg[1] - goal_camping[1]
+
+            if abs(x) < 0.1 and abs(y) < 0.1:
+                rotated_into_pos = True
+                at_target = True
+                
+
             print(sqrt(x**2 + y**2))
             # begin positioning in goal
             if xy_avg != goal_camping:
+                # handle imu errors
+                if not imu.canBeTrusted: imu_errors += 1
+                if imu_errors > 10: MODE = "UHOH" # if the imu starts acting a fool just go after ball
+                    
+                print(f"IMU Trusted: {imu.canBeTrusted}\nIMU Errors: {imu_errors}")
                 tar_rot = round((math.atan(y/x)) * 180/pi, 1)
                 angle_diff = cur_rot - tar_rot
-                print(f'Pos: {x}, {y} \n Cur Rot: {cur_rot} Tar Rot: {tar_rot} Angle Diff: {angle_diff}')
+                print(f'Offset: {x}, {y}\nTar Rot: {tar_rot}\nAngle Diff: {angle_diff}')
                 ## step one: rotate to the face the right position
                 if not abs(angle_diff) < 5 and not rotated_into_pos:
                     if -angle_diff < 0:
@@ -522,74 +529,133 @@ while robot.step(TIME_STEP) != -1:
                         leftSpeed = -8
                         rightSpeed = 8
                 ## step two: back tf up
-                elif not sqrt(x**2 + y**2) < .05 and not at_target:
+                elif not sqrt(x**2 + y**2) < .01 and not at_target:
                     rotated_into_pos = True
                     rightSpeed = -10
                     leftSpeed = -10
+                ## step three: rotate into position
                 else:
                     if cur_rot < -2:
-                        rightSpeed = +8
-                        leftSpeed = -8
+                        rightSpeed = +10
+                        leftSpeed = -10
                     elif cur_rot > 2:
-                        rightSpeed = -8
-                        leftSpeed = +8
+                        rightSpeed = -10
+                        leftSpeed = +10
                     else:
                         MODE = "WAITING"
                     at_target = True
-                    print("In position.")
+                    print("Chat Log: In position.")
+                    canon_time = 0
 
         case "WAITING":
+            # handle no ball
+            try:
+                ball_dist = BDC(yellow[0])
+            except:
+                pass # oh lord
+
             if yellow == 0:
-                fuckup_count += 1
-                if fuckup_count > 10:
-                    MODE = "POSITION"
-                    fuckup_count = 0
-                    print("Back to goal camping")
-            elif (BDC(yellow[0]) < .50) or (canon_time > 15):  # start going when the ball is close/time has passed
-                print(angle_offset(yellow[1]))
+                error_count += 1
+                if error_count > 10:
+                    MODE = "START"
+                    error_count = 0
+                    print("Chat Log: Defending.")
+                        
+            elif (ball_dist < .5) or (canon_time > 15):  # start going when the ball is close/time has passed
+                # decrease error buildup
+                if error_count > 0: error_count -= 1
+                #print(angle_offset(yellow[1]))
                 ## correct angle until ball is centered on this robot, then full send to steal ball and run (SBR reference)
-                if yellow[1] - camera_width/2 < -5:
-                    leftSpeed = -4
-                    rightSpeed = +4
-                elif yellow[1] - camera_width > 5:
-                    rightSpeed = -4
-                    leftSpeed = +4
+                if yellow[1] - CAMERA_WIDTH/2 < -50:
+                    if ball_dist < .3:
+                        leftSpeed = -4
+                    else:
+                        leftSpeed = -10
+                    rightSpeed = +10
+                elif yellow[1] - CAMERA_WIDTH/2 > 50:
+                    if ball_dist < .3:
+                        rightSpeed = -4
+                    else:
+                        rightSpeed = -10
+                    leftSpeed = +10
                 else:
-                    print(xy_avg)
+                    # print(f"Robot thinks its centered {yellow[1] - CAMERA_WIDTH/2}")
+                    # print(xy_avg)
                     rightSpeed = 10
                     leftSpeed = 10
-                    print("Great pass!")
+                    print("Chat Log: Great pass!")
                     # change modes one tile before halfway
                     if xy_avg[0] >= -0.25:
-                        MODE="BALLCHASE"
+                        MODE="BALLCHASE" ## technically not a bad thing to go into uh oh mode here
 
         case "BALLCHASE":
-            vector = calculate_transform(xy_avg, cur_rot, enemy_goal)
-            print(vector)
-            if vector[2] > 2:
-                leftSpeed = +10
-                rightSpeed = +8
-            elif vector[2] < -2:
-                rightSpeed = +10
-                leftSpeed = +8
+            #### aidan here - this method was smart but im not smart enough to program it, hence why i scrapped it
+            ## handle no ball (again)
+            if yellow == 0:
+                error_count += 1
+                if error_count > 3:
+                    MODE = "START"
+                    error_count = 0
+                    print("Chat Log: Defending.")
+            elif xy_avg[0] < 1:
+                error_count = 0
+                if yellow[1] - CAMERA_WIDTH/2 > 75:
+                    leftSpeed = +8
+                    rightSpeed = -10
+                elif yellow[1] - CAMERA_WIDTH / 2 < -75:
+                    rightSpeed = +8
+                    leftSpeed = -10
+                else:
+                    leftSpeed = +10
+                    rightSpeed = +10
             else:
-                rightSpeed = +10
+                try:
+                    goal = ColorCheck(ENEMY_GOAL)
+                    print(f"Yellow Pixels: {yellow}\n{ENEMY_GOAL}: {goal}")
+                    if yellow[0] > 300 and goal[0] > 300:
+                        rand = random.randint(0, len(goal_msg))
+                        print(goal_msg[rand])
+                except:
+                    pass  # surely this code could NEVER be a bad idea
+                error_count = 0
+
+
+        case "UHOH":
+            # a fairly more forgiving defense mode toggle
+            print("Chat Log: going for goal")
+            if yellow == 0:
+                error_count += 1
+                if error_count > 30:
+                    MODE = "START"
+                    error_count = 0
+                    print("Chat Log: Defending.")
+            ## this is for when the imu just outright breaks
+            goal = ColorCheck(ENEMY_GOAL)
+            if goal == 0:
+                goal = ColorCheck("cyan")
+            print(f"Yellow Pixels: {yellow}\n{ENEMY_GOAL}: {goal}")
+            # make robot track ball
+            if yellow == 0:
                 leftSpeed = +10
+                rightSpeed = -10
+            elif yellow[1] - CAMERA_WIDTH/2 > 75:
+                error_count = 0
+                leftSpeed = +10
+                rightSpeed = -8
+            elif yellow[1] - CAMERA_WIDTH / 2 < -75:
+                error_count = 0
+                rightSpeed = +10
+                leftSpeed = -8
+            elif goal != 0 and abs(goal[1] - CAMERA_WIDTH/2)  < 200:
+                leftSpeed = +10
+                rightSpeed = +10
+            try:
+                if yellow[0] > 300 and goal[0] > 300:
+                    rand = random.randint(0, len(goal_msg))
+                    print(goal_msg[rand])
+            except:
+                pass # surely this code could NEVER be a bad idea
 
-            pass
-        case "OHSHITOHFUCK":
-            pass
-
-    # ================= LIDAR READING =================
-    # Get all distance readings from the lidar this timestep
-    distances = get_lidar_distances()
-
-    # Example: read the closest obstacle distance straight ahead
-    front_dist = get_lidar_sector(distances, 'front')
-
-    # Example: stop if something is within 0.2 meters in front
-    # if front_dist < 0.2:
-    #     set_speed(0, 0)
-    #     continue
-
+    print("\n "*2)
     set_speed(leftSpeed, rightSpeed)
+

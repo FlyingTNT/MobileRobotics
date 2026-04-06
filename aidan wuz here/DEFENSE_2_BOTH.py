@@ -606,6 +606,99 @@ def DouglasPeucker(points: list[LidarPoint] | list[Point], start: int, end: int,
 ######################################################
 
 
+
+def calculate_transform(start, current_angle, dest):
+    '''
+    Input should be 2 tuples of (x, y)
+    Returns a tuple in the structure:
+    (Hypotenuse, degree_offset, angle_difference)
+    '''
+    x = start[0] - dest[0]
+    y = start[1] - dest[1]
+    hyp = sqrt(x ** 2 + y ** 2)
+    deg = round(math.atan2(y, x) * 180 / pi, 1)
+    angle_diff = current_angle - deg
+
+    return (hyp, deg, angle_diff)
+
+def calculate_intersection(bot, bot_v, ball, ball_v, tol=1e-9):
+    # yeah yeah this is ai slop but i lowk have a massive headache
+    x1, y1 = bot
+    vx1, vy1 = bot_v
+    x2, y2 = ball
+    vx2, vy2 = ball_v
+
+    # find time
+    denom_x = vx1 - vx2
+    denom_y = vy1 - vy2
+
+    t_x = None
+    t_y = None
+
+    if abs(denom_x) > tol:
+        t_x = (x2 - x1) / denom_x
+
+    if abs(denom_y) > tol:
+        t_y = (y2 - y1) / denom_y
+
+    # make sure time is pos
+    if t_x is not None and t_y is not None:
+        if abs(t_x - t_y) > tol:
+            return None  # no meet point
+        t = t_x
+    elif t_x is not None:
+        t = t_x
+    elif t_y is not None:
+        t = t_y
+    else:
+        if abs(x1 - x2) < tol and abs(y1 - y2) < tol:
+            return (x1, y1)
+        return None
+
+    if t < 0:
+        return None
+
+    x = x1 + vx1 * t
+    y = y1 + vy1 * t
+
+    return (x, y)
+
+
+def bot_velocity (positions, dt):
+    velocities = []
+    v_x = []
+    v_y = []
+    for i in range(len(positions)):
+        if i == 0:
+            # forward difference
+            x0, y0 = positions[i]
+            x1, y1 = positions[i + 1]
+            vx = (x1 - x0) / dt
+            vy = (y1 - y0) / dt
+
+        elif i == len(positions) - 1:
+            # backward difference
+            x0, y0 = positions[i - 1]
+            x1, y1 = positions[i]
+            vx = (x1 - x0) / dt
+            vy = (y1 - y0) / dt
+
+        else:
+            # central difference
+            x_prev, y_prev = positions[i - 1]
+            x_next, y_next = positions[i + 1]
+            vx = (x_next - x_prev) / (2 * dt)
+            vy = (y_next - y_prev) / (2 * dt)
+
+        velocities.append((vx, vy))
+        v_x.append(vx)
+        v_y.append(vy)
+
+    v_final = (sum(v_x)/len(v_x), sum(v_y)/len(v_y))
+    return v_final
+    # return velocities
+
+
 def xy_average(x_list, y_list):
     x_avg = sum(x_list) / len(x_list)
     y_avg = sum(y_list) / len(y_list)
@@ -618,6 +711,7 @@ MODE = "START"
 imu = IMU(lidar, camera, frontLeftDistance, frontRightDistance)
 canon_time = 0
 DECADE = 7
+time_per_decade = TIME_STEP * DECADE
 x_decade = [None] * DECADE
 y_decade = [None] * DECADE
 xy_count = 0
@@ -643,21 +737,6 @@ goal_msg = ["What a save!", "Nice block!", "Close one!", "Siiiick!", "Whoops..."
             "Thanks!"]
 
 
-def calculate_transform(start, current_angle, dest):
-    '''
-    Input should be 2 tuples of (x, y)
-    Returns a tuple in the structure:
-    (Hypotenuse, degree_offset, angle_difference)
-    '''
-    x = start[0] - dest[0]
-    y = start[1] - dest[1]
-    hyp = sqrt(x ** 2 + y ** 2)
-    deg = round(math.atan2(y, x) * 180 / pi, 1)
-    angle_diff = current_angle - deg
-
-    return (hyp, deg, angle_diff)
-
-
 print("glhf!")
 close = False
 # ------------------ MAIN LOOP ------------------
@@ -670,63 +749,55 @@ while robot.step(TIME_STEP) != -1:
     #    print("dadgum imu brok (not my fault)")
     leftSpeed = 0.0
     rightSpeed = 0.0
+    print("BEGIN")
+    if xy_count < DECADE and imu.canBeTrusted:
+        next_x = imu.getX()
+        next_y = imu.getY()
+        print(f"IMU X: {imu.getX()}\nIMU Y: {imu.getY()}")
 
-
-    # move to a point function
-    def goTo(x: float, y: float):
-        global close
-        xDiff = x - imu.x
-        yDiff = y - imu.y
-
-        # print(f"tgt : {x}, {y}")
-
-        dist = sqrt(xDiff ** 2 + yDiff ** 2)
-
-        if dist > 0.1:
-            close = False
-        elif dist < 0.05:
-            close = True
-
-        if close:
-            if abs(imu.angleToBall) < 0.1:
-                go(0, 0)
-            elif not imu.canSeeBall:
-                go(0.2, -imu.getRotation() / 45)
-            else:
-                go(0.2 * abs(imu.angleToBall / 45), -2 if imu.angleToBall < 0 else 2)
-            return
-
-        back = xDiff < 0  # imu.canSeeBall and abs(angleDiff) > 90
-
-        if back:
-            xDiff = -xDiff
-            yDiff = -yDiff
-
-        angleTo = -atan2(yDiff, xDiff) / pi * 180
-
-        angleDiff = getAngleDiff(imu.getRotation(), angleTo)
-
-        # print(f"The angle to is {angleTo} and we are at {imu.getRotation()} so we're going {angleDiff}")
-
-        go(-dist / 0.25 if back else dist / 0.25, (1 if back else -1) * angleDiff / 45)
-
-
-    if xy_count < DECADE:
-        x_decade[xy_count] = imu.getX()
-        y_decade[xy_count] = imu.getY()
+        '''
+        if xy_data_ready:
+            # check to make sure imu isnt inverted for whatever fucking reason its 12:05 AM 4/6
+            check = DECADE if (xy_count - 1 < 0) else (xy_count - 1)
+            print(check)
+            if abs(x_decade[check] - next_x) > .2:
+                next_x = -next_x
+            if abs(y_decade[check] - next_y) > .2:
+                next_y = -next_y
+        '''
+        
+        x_decade[xy_count] = next_x
+        y_decade[xy_count] = next_y
         xy_count += 1
         if xy_data_ready:
             xy_avg = xy_average(x_decade, y_decade)
+
     elif imu.canBeTrusted:
+        next_x = imu.getX()
+        next_y = imu.getY()
+        print(f"IMU X: {imu.getX()}\nIMU Y: {imu.getY()}")
         xy_count = 1
-        x_decade[0] = imu.getX()
-        y_decade[0] = imu.getY()
+
+        '''
+        if xy_data_ready:
+            check = DECADE if (xy_count - 1 < 0) else (xy_count - 1)
+            if abs(x_decade[check] - next_x) > .2:
+                next_x = -next_x
+            if abs(y_decade[check] - next_y) > .2:
+                next_y = -next_y
+        '''
+
+        x_decade[xy_count] = next_x
+        y_decade[xy_count] = next_y
+
+        
         xy_avg = xy_average(x_decade, y_decade)
         xy_data_ready = True
+
     else:
         print("Bad imu data.")
 
-    cur_rot = abs(imu.getRotation())
+    cur_rot = -imu.getRotation()
     # print(cur_rot)
     # print(xy_avg)
 
@@ -791,11 +862,11 @@ while robot.step(TIME_STEP) != -1:
                 if imu_errors > 10: MODE = "UHOH"  # if the imu starts acting a fool just go after ball
 
                 print(f"IMU Trusted: {imu.canBeTrusted}\nIMU Errors: {imu_errors}")
-                tar_rot = round(math.atan2(y, x) * 180 / pi, 1)
+                tar_rot = round(math.atan(y/x) * 180 / pi, 2)
                 angle_diff = cur_rot - tar_rot
                 print(f'Offset: {x}, {y}\nTar Rot: {tar_rot}\nAngle Diff: {angle_diff}')
                 ## step one: rotate to the face the right position
-                if not abs(angle_diff) < 5 and not rotated_into_pos:
+                if not abs(angle_diff) < 2 and not rotated_into_pos:
                     if -angle_diff < 0:
                         rightSpeed = -8
                         leftSpeed = 8
@@ -809,10 +880,10 @@ while robot.step(TIME_STEP) != -1:
                     leftSpeed = -10
                 ## step three: rotate into position
                 else:
-                    if cur_rot < -2:
+                    if cur_rot < -5:
                         rightSpeed = +10
                         leftSpeed = -10
-                    elif cur_rot > 2:
+                    elif cur_rot > 5:
                         rightSpeed = -10
                         leftSpeed = +10
                     else:
@@ -848,7 +919,7 @@ while robot.step(TIME_STEP) != -1:
                     print("Chat Log: Great pass!")
 
                     if xy_avg[0] >= -0.50:
-                        MODE = "UHOH"
+                        MODE = "BALLCHASE"
                         
         case "BALLCHASE":
             #### aidan here - this method was smart but im not smart enough to program it, hence why i scrapped it
@@ -859,20 +930,40 @@ while robot.step(TIME_STEP) != -1:
                     MODE = "START"
                     error_count = 0
                     print("Chat Log: Defending.")
-
-            vector = calculate_transform(xy_avg, cur_rot, enemy_goal)
-            print(vector)
-            if vector[2] > 2:
-                leftSpeed = +10
-                rightSpeed = +8
-            elif vector[2] < -2:
-                rightSpeed = +10
-                leftSpeed = +8
+            elif xy_avg[0] < 1:
+                error_count = 0
+                if ball_angle > 8:
+                    leftSpeed = +8
+                    rightSpeed = -10
+                elif ball_angle < -8:
+                    rightSpeed = +8
+                    leftSpeed = -10
+                else:
+                    leftSpeed = +10
+                    rightSpeed = +10
             else:
-                rightSpeed = +10
-                leftSpeed = +10
+                error_count = 0
 
-            pass
+                ''' # yeah this shit didnt work
+                
+                # go towards goal if not near
+                xy_decade = []
+                for val in range(len(x_decade)):
+                    xy_decade.append((x_decade[val], y_decade[val]))
+
+                bot_V = bot_velocity(xy_decade, time_per_decade)
+                ball_V = (imu.ballVelocityX, imu.ballVelocityY)
+                print(f"Ball V: {ball_V}")
+                print(f"Bot V: {bot_V}")
+                intersection = calculate_intersection(xy_avg, bot_V, (imu.absoluteBallX, imu.absoluteBallY), ball_V)
+                print(f"Intersection: {intersection}")
+                
+                # '''
+                
+            #
+
+
+
         case "UHOH":
             # a fairly more forgiving defense mode toggle
             print("Chat Log: going for goal")
@@ -887,7 +978,7 @@ while robot.step(TIME_STEP) != -1:
             # make robot track ball
             if not imu.knowsWhereBallIs():
                 leftSpeed = +10
-                rightSpeed = -10
+                rightSpeed = +10
             elif ball_angle > 8:
                 error_count = 0
                 leftSpeed = +10
