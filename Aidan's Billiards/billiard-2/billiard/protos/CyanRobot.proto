@@ -1,0 +1,141 @@
+#VRML_SIM R2025a utf8
+
+PROTO CyanRobot [
+  field SFVec3f    translation 0 0 0
+  field SFRotation rotation    0 0 1 0
+  field SFString   controller  "flea"
+]
+{
+  Robot {
+  translation IS translation
+  rotation IS rotation
+  controller IS controller
+  children [
+    Camera {
+      translation 0.004 0 0
+      rotation 0 0 1 3.141592653589793
+    }
+    TouchSensor {
+      translation -0.025 0 0.002
+      name "hat sensor"
+      boundingObject Box {
+        size 0.001 0.05 0.005
+      }
+    }
+    HingeJoint {
+      jointParameters HingeJointParameters {
+        axis 0 1 0
+        anchor -0.025 -0.025 -0.005
+      }
+      device [
+        DEF WheelMotor RotationalMotor {
+          name "motorFR"
+          maxVelocity 100000000000
+        }
+      ]
+      endPoint Solid {
+        translation -0.025 -0.025 -0.005
+        rotation 1 0 0 1.57079632679
+        children [
+          DEF Wheel_Shape Shape {
+            appearance DEF Appearance Appearance {
+              material Material {
+                diffuseColor 1 1 1
+                transparency 0.97
+              }
+            }
+            geometry Cylinder {
+              height 0.001
+              radius 0.01
+            }
+          }
+        ]
+        name "wfr"
+        boundingObject USE Wheel_Shape
+        physics DEF WheelPhysx Physics {
+        }
+      }
+    }
+    HingeJoint {
+      jointParameters HingeJointParameters {
+        axis 0 1 0
+        anchor -0.025 0.025 -0.005
+      }
+      device [
+        DEF WheelMotor RotationalMotor {
+          name "motorFL"
+          maxVelocity 100000000000
+        }
+      ]
+      endPoint Solid {
+        translation -0.025 0.025 -0.005
+        rotation 1 0 0 1.57079632679
+        children [
+          USE Wheel_Shape
+        ]
+        name "wfl"
+        boundingObject USE Wheel_Shape
+        physics USE WheelPhysx
+      }
+    }
+    HingeJoint {
+      jointParameters HingeJointParameters {
+        axis 0 1 0
+        anchor 0.025 0.025 -0.005
+      }
+      device [
+        DEF WheelMotor RotationalMotor {
+          name "motorBL"
+          maxVelocity 100000000000
+        }
+      ]
+      endPoint Solid {
+        translation 0.025 0.025 -0.005
+        rotation 1 0 0 1.57079632679
+        children [
+          USE Wheel_Shape
+        ]
+        name "wbl"
+        boundingObject USE Wheel_Shape
+        physics USE WheelPhysx
+      }
+    }
+    HingeJoint {
+      jointParameters HingeJointParameters {
+        axis 0 1 0
+        anchor 0.025 -0.025 -0.005
+      }
+      device [
+        DEF WheelMotor RotationalMotor {
+          name "motorBR"
+          maxVelocity 100000000000
+        }
+      ]
+      endPoint Solid {
+        translation 0.025 -0.025 -0.005
+        rotation 1 0 0 1.57079632679
+        children [
+          USE Wheel_Shape
+        ]
+        name "wbr"
+        boundingObject USE Wheel_Shape
+        physics USE WheelPhysx
+      }
+    }
+    DEF Body Shape {
+      appearance USE Appearance
+      geometry Box {
+        size 0.05 0.05 0.01
+      }
+    }
+  ]
+  name "flea"
+  boundingObject USE Body
+  physics Physics {
+    centerOfMass [
+      0 0 0
+    ]
+  }
+}
+
+}
