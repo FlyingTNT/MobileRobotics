@@ -3,12 +3,13 @@
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackground.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/balls/protos/Ball.proto"
+EXTERNPROTO "../protos/Cat.proto"
 
 WorldInfo {
 }
 Viewpoint {
-  orientation -0.33785519588888613 0.7146127941100315 0.612521363794877 1.3266816573890587
-  position 0.9806186051864244 -2.865415989250517 1.3010460549978609
+  orientation -0.3551641023704621 0.704760831958111 0.6141421904779828 1.3857386054264467
+  position -2.523412046348123 -7.844298203817167 12.394629428040512
 }
 TexturedBackground {
   texture "factory"
@@ -547,6 +548,9 @@ Robot {
   }
   controller "prop_test"
   supervisor TRUE
+}
+Cat {
+  translation 0 0 3
 }
 Robot {
   translation 1.5272219813139754 -1.9804412401082685 0.10320299953386355

@@ -4,12 +4,13 @@ EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/project
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/balls/protos/Ball.proto"
 EXTERNPROTO "../protos/CyanRobot.proto"
+EXTERNPROTO "../protos/Cat.proto"
 
 WorldInfo {
 }
 Viewpoint {
-  orientation 0.5972787004657012 0.5086195313760951 -0.6201325070279453 2.121471152263881
-  position 1.9463137870617933 -2.0906246105723034 9.829369275943176
+  orientation 0.2943512791310194 0.664347313476632 -0.6870225407876472 1.0397898264399705
+  position -2.514282687579599 1.1575690352293644 4.843279384086354
 }
 TexturedBackground {
   texture "factory"
@@ -504,7 +505,7 @@ Robot {
       ]
       endPoint Solid {
         translation -0.42499999999102095 0.24000099858718205 0.259999843043628
-        rotation -1.888244812248246e-11 -1.728749486446098e-08 1 3.1415900003326525
+        rotation -1.8882448122482512e-11 -1.728749486446098e-08 1 3.1415900003326525
         children [
           DistanceSensor {
             translation 0.0299994 0.38 0.0500019
@@ -874,7 +875,7 @@ Robot {
       ]
       endPoint DEF WHEELX Solid {
         translation 0.479984 -0.09262009999999998 0.125
-        rotation -0.49840176550352483 -0.7192259286356912 -0.4840555171889864 4.420741315636753
+        rotation -0.4984017655035248 -0.7192259286356912 -0.4840555171889864 4.420741315636753
         children [
           Shape {
             appearance Appearance {
@@ -994,7 +995,7 @@ Robot {
       ]
       endPoint Solid {
         translation -0.42499999999102095 0.24000099858718205 0.259999843043628
-        rotation -1.888244812248246e-11 -1.728749486446098e-08 1 3.1415900003326525
+        rotation -1.8882448122482512e-11 -1.728749486446098e-08 1 3.1415900003326525
         children [
           DistanceSensor {
             translation 0.0299994 0.38 0.0500019
@@ -1198,4 +1199,8 @@ Robot {
 CyanRobot {
   translation 2.53329 -2.97643 0.12
   rotation 0 0 -1 0.523598
+}
+Cat {
+  translation 2.45 -2.99 0.82
+  controller "prop_test"
 }

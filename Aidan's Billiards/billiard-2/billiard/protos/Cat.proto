@@ -1,0 +1,100 @@
+#VRML_SIM R2025a utf8
+# Describe the functionality of your PROTO here.
+
+
+PROTO Cat [
+  field SFVec3f translation 0 0 0
+  field SFRotation rotation 0 0 1 0
+  field SFString controller "<generic>"
+]
+{
+  Robot {
+  translation IS translation
+  rotation IS rotation
+  controller IS controller
+  children [
+    Solid {
+      translation 0 0 0.29
+      children [
+        Shape {
+          appearance PBRAppearance {
+          }
+          geometry Cylinder {
+            height 0.3
+            radius 0.03
+          }
+        }
+      ]
+    }
+    HingeJoint {
+      jointParameters HingeJointParameters {
+        position -2980.4307974913577
+        axis 0 0 1
+        anchor 0 -1.0960606337470646e-17 0.39999984421720614
+      }
+      device [
+        RotationalMotor {
+          name "propeller"
+          maxVelocity 1000
+        }
+      ]
+      endPoint Solid {
+        translation 1.368306995647706e-16 -1.1076058587353369e-16 0.439989
+        rotation 0 0 -1 2.2009618882336897
+        children [
+          DEF ROTOR Shape {
+            appearance DEF METAL PBRAppearance {
+            }
+            geometry Box {
+              size 0.7 0.07 0.025
+            }
+          }
+        ]
+        name "ROTOR_SOLID"
+        boundingObject USE ROTOR
+        physics Physics {
+          mass 0.01
+        }
+      }
+    }
+    DEF ROB_JR_HB Shape {
+      appearance Appearance {
+        material Material {
+          transparency 1
+        }
+      }
+      geometry Box {
+        size 0.15 0.4 0.1
+      }
+    }
+    DEF ROB_JR_MESH Shape {
+      appearance PBRAppearance {
+        baseColorMap ImageTexture {
+          url [
+            "meshes/Cat_diffuse.jpg"
+          ]
+        }
+        roughness 0.3
+        roughnessMap ImageTexture {
+          url [
+            "meshes/Cat_bump.jpg"
+          ]
+        }
+        metalness 0
+      }
+      geometry Mesh {
+        url [
+          "meshes/cat.obj"
+        ]
+      }
+      castShadows FALSE
+    }
+  ]
+  name "ROB_JR"
+  boundingObject USE ROB_JR_HB
+  physics Physics {
+    mass 0.01
+  }
+  supervisor TRUE
+}
+}

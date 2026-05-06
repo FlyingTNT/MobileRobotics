@@ -4,7 +4,6 @@ import time
 robot = Supervisor()
 timestep = int(robot.getBasicTimeStep())
 
-print("a")
 motor = robot.getDevice("propeller")
 motor.setPosition(float('inf'))
 motor.setVelocity(0.0)
